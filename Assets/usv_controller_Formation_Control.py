@@ -59,14 +59,22 @@ HEADING_I_LIMIT = 30.0
 DIST_I_LIMIT = 15.0
 LEADER_VEL_ALPHA = 0.45
 
-FORMATION_POS_GAIN = 1.2
-RIGID_SPEED_MAX = 20.0
+FORMATION_POS_GAIN = 1.25
+RIGID_SPEED_MAX = 23.0
 MIN_GUIDE_VEC_NORM = 1e-6
 CATCHUP_DIST_TH = 12.0
 CATCHUP_SPEED_GAIN = 0.36
-CATCHUP_SPEED_MAX_BOOST = 4.0
-CATCHUP_THROTTLE_GAIN = 0.04
-CATCHUP_THROTTLE_MAX = 0.18
+CATCHUP_SPEED_MAX_BOOST = 6.0
+CATCHUP_THROTTLE_GAIN = 0.05
+CATCHUP_THROTTLE_MAX = 0.28
+CATCHUP_TURN_SCALE_GAIN = 0.025
+CATCHUP_TURN_SCALE_MAX_ADD = 0.35
+TURN_INNER_OMEGA_TH = 0.08
+INNER_TURN_FORWARD_MARGIN = 2.0
+INNER_TURN_LEADER_MARGIN = -1.5
+INNER_TURN_SLOT_GAIN = 0.035
+INNER_TURN_LEADER_GAIN = 0.08
+INNER_TURN_MIN_SPEED_SCALE = 0.45
 
 LEADER_STOP_SPEED_TH = 0.2
 FORMATION_HOLD_DIST_TH = 2.0
@@ -503,6 +511,11 @@ def process_boat_rigid(sock, tx_port, boat_name, target_dx, target_dz, other_boa
     my_z = state["z"]
     my_speed = state.get("speed", 0.0)
 
+    rel_world_x = my_x - leader_x
+    rel_world_z = my_z - leader_z
+    rel_local_x = rel_world_x * math.cos(leader_yaw_rad) - rel_world_z * math.sin(leader_yaw_rad)
+    rel_local_z = rel_world_x * math.sin(leader_yaw_rad) + rel_world_z * math.cos(leader_yaw_rad)
+
     pos_error_x = target_x - my_x
     pos_error_z = target_z - my_z
     target_dist = math.hypot(pos_error_x, pos_error_z)
@@ -601,6 +614,20 @@ def process_boat_rigid(sock, tx_port, boat_name, target_dx, target_dz, other_boa
     desired_forward_speed = max(0.0, min(desired_forward_speed, RIGID_SPEED_MAX))
 
     catchup_throttle_bonus = 0.0
+    inner_turn_speed_scale = 1.0
+
+    is_inside_turn = (
+        (leader_omega > TURN_INNER_OMEGA_TH and boat_name == "Left") or
+        (leader_omega < -TURN_INNER_OMEGA_TH and boat_name == "Right")
+    )
+
+    if is_inside_turn:
+        slot_overrun = max(0.0, rel_local_z - (target_dz + INNER_TURN_FORWARD_MARGIN))
+        leader_overrun = max(0.0, rel_local_z - INNER_TURN_LEADER_MARGIN)
+        inner_turn_speed_scale -= INNER_TURN_SLOT_GAIN * slot_overrun
+        inner_turn_speed_scale -= INNER_TURN_LEADER_GAIN * leader_overrun
+        inner_turn_speed_scale = max(INNER_TURN_MIN_SPEED_SCALE, inner_turn_speed_scale)
+        desired_forward_speed *= inner_turn_speed_scale
 
     if target_dist > CATCHUP_DIST_TH:
         catchup_gap = target_dist - CATCHUP_DIST_TH
@@ -610,6 +637,8 @@ def process_boat_rigid(sock, tx_port, boat_name, target_dx, target_dz, other_boa
         )
         desired_forward_speed = min(desired_forward_speed, RIGID_SPEED_MAX + CATCHUP_SPEED_MAX_BOOST)
         catchup_throttle_bonus = min(CATCHUP_THROTTLE_MAX, CATCHUP_THROTTLE_GAIN * catchup_gap)
+
+    catchup_throttle_bonus *= inner_turn_speed_scale
 
     if dist_to_other is not None and dist_to_other < 12.0:
         proximity_scale = max(0.25, dist_to_other / 12.0)
@@ -660,6 +689,10 @@ def process_boat_rigid(sock, tx_port, boat_name, target_dx, target_dz, other_boa
 
     # 角度越大，油門越小。
     turn_scale = max(0.25, 1.0 - abs(diff) / 90.0)
+    if target_dist > CATCHUP_DIST_TH:
+        catchup_gap = target_dist - CATCHUP_DIST_TH
+        turn_scale += min(CATCHUP_TURN_SCALE_MAX_ADD, CATCHUP_TURN_SCALE_GAIN * catchup_gap)
+        turn_scale = min(turn_scale, 1.0)
     throttle = throttle * turn_scale
 
 
