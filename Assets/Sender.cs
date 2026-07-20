@@ -14,13 +14,22 @@ public class MainCameraStreamSender : MonoBehaviour
 
     [Header("串流設定")]
     [Range(1, 60)]
-    public int sendFPS = 15;
+    public int sendFPS = 24;
 
     [Range(0.1f, 1.0f)]
     public float resizeScale = 0.5f;   // 1.0=原解析度, 0.5=半解析度
 
+    [Tooltip("啟用後直接用固定解析度擷取，不受 Game 視窗大小影響")]
+    public bool useFixedCaptureResolution = true;
+
+    [Min(64)]
+    public int captureWidth = 640;
+
+    [Min(64)]
+    public int captureHeight = 360;
+
     [Range(30, 100)]
-    public int jpgQuality = 70;
+    public int jpgQuality = 55;
 
     [Header("除錯")]
     public bool autoReconnect = true;
@@ -49,8 +58,7 @@ public class MainCameraStreamSender : MonoBehaviour
     {
         cam = GetComponent<Camera>();
 
-        targetWidth = Mathf.Max(64, Mathf.RoundToInt(Screen.width * resizeScale));
-        targetHeight = Mathf.Max(64, Mathf.RoundToInt(Screen.height * resizeScale));
+        ResolveCaptureDimensions();
 
         renderTexture = new RenderTexture(targetWidth, targetHeight, 24, RenderTextureFormat.ARGB32);
         renderTexture.Create();
@@ -59,6 +67,28 @@ public class MainCameraStreamSender : MonoBehaviour
 
         ConnectToServer();
         sendCoroutine = StartCoroutine(SendFramesCoroutine());
+    }
+
+    void ResolveCaptureDimensions()
+    {
+        if (useFixedCaptureResolution)
+        {
+            targetWidth = Mathf.Max(64, captureWidth);
+            targetHeight = Mathf.Max(64, captureHeight);
+            return;
+        }
+
+        int sourceWidth = Screen.width;
+        int sourceHeight = Screen.height;
+
+        if (cam != null)
+        {
+            sourceWidth = Mathf.Max(sourceWidth, Mathf.RoundToInt(cam.pixelWidth));
+            sourceHeight = Mathf.Max(sourceHeight, Mathf.RoundToInt(cam.pixelHeight));
+        }
+
+        targetWidth = Mathf.Max(64, Mathf.RoundToInt(sourceWidth * resizeScale));
+        targetHeight = Mathf.Max(64, Mathf.RoundToInt(sourceHeight * resizeScale));
     }
 
     async void ConnectToServer()
