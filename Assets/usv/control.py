@@ -834,6 +834,30 @@ def process_boat_vision_based(sock, tx_port, side):
         throttle = max(throttle, float(SEARCH_FORWARD_THROTTLE))
 
     throttle = clamp(throttle, 0.0, throttle_ceiling)
+
+    formation_mode = str(runtime_settings.get("formation_mode", "v")).strip().lower()
+    Line_transition_until = float(runtime_settings.get("right_line_transition_until", 0.0))
+    Line_transition_scale = float(runtime_settings.get("right_line_throttle_scale", 0.75))
+    v_recovery_until = float(runtime_settings.get("right_v_recovery_until", 0.0))
+    v_recovery_boost = float(runtime_settings.get("right_v_recovery_boost", 0.12))
+
+    if (
+        side == "Right"
+        and formation_mode == "line"
+        and time.time() < Line_transition_until
+    ):
+        throttle *= Line_transition_scale
+
+    if (
+        side == "Right"
+        and formation_mode == "v"
+        and time.time() < v_recovery_until
+        and front_visual_ref_ready
+        and front_area_error_ratio > 0.0
+    ):
+        catchup_ratio = clamp(front_area_error_ratio, 0.0, 1.0)
+        throttle += v_recovery_boost * catchup_ratio
+
     prev_throttle_ema = _LAST_THROTTLE.get(side, throttle)
     throttle_alpha = float(RIGHT_THROTTLE_SMOOTH_ALPHA) if side == "Right" else float(THROTTLE_SMOOTH_ALPHA)
     # KF alpha boost: when KF reports approach (area growing), anticipate the

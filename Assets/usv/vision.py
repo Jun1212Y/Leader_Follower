@@ -851,6 +851,14 @@ def cv_processing_thread():
                 best_side_leader_score = -1.0
 
                 if result is not None and result.boxes is not None:
+                    formation_mode = str(runtime_settings.get("formation_mode", "v")).strip().lower()
+                    desired_front_class = YOLO_CLASS_LEADER
+                    desired_front_kind = "leader"
+
+                if role == "front":
+                    if boat_side == "Right" and formation_mode == "line":
+                        desired_front_class = YOLO_CLASS_FOLLOWER
+                        desired_front_kind = "follower"
                     for box in result.boxes:
                         cls_id = int(box.cls[0])
                         x1, y1, x2, y2 = map(int, box.xyxy[0])
@@ -902,7 +910,7 @@ def cv_processing_thread():
                                     center_offset,
                                     center_point,
                                     "YOLO",
-                                    target_kind="leader",
+                                    target_kind=desired_front_kind,
                                     det_conf=box_conf,
                                 )
                         else:
@@ -969,7 +977,7 @@ def cv_processing_thread():
                                 fb_offset,
                                 ((x1 + x2) // 2, (y1 + y2) // 2),
                                 "YOLO",
-                                target_kind="leader",
+                                target_kind=desired_front_kind,
                                 det_conf=fb_conf * 0.7,
                             )
 

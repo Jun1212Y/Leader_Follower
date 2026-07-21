@@ -26,6 +26,7 @@ from .config import (
     PORT_LEFT_TX,
     PORT_RIGHT_RX,
     PORT_RIGHT_TX,
+    FORMATION_MODE_RX,
     SHOW_SIDE_WINDOWS,
     SHOW_WINDOW,
     UDP_IP,
@@ -1427,6 +1428,7 @@ def _evaluate_startup_sync(now):
 def main():
     sock_left = _build_udp_socket(PORT_LEFT_RX)
     sock_right = _build_udp_socket(PORT_RIGHT_RX)
+    sock_formation = _build_udp_socket(FORMATION_MODE_RX)
 
     print("=======================================")
     print("雙船 Fully Vision-Based 啟動")
@@ -1518,6 +1520,55 @@ def main():
             loop_start = time.time()
 
             _evaluate_startup_sync(loop_start)
+
+            # Formation mode can be changed at runtime via UDP
+            try:
+                while True:
+                    data, _ = sock_formation.recvfrom(1024)
+                    msg = json.loads(data.decode("utf-8"))
+
+                    if msg.get("cmd") != "set_formation_mode":
+                        continue
+
+                    new_mode = str(msg.get("mode", "v")).strip().lower()
+                    if new_mode not in ("v", "line"):
+                        continue
+
+                    prev_mode = str(runtime_settings.get("formation_mode", "v")).strip().lower()
+                    if new_mode == prev_mode:
+                        continue
+
+                    runtime_settings["formation_mode"] = new_mode
+
+                    # Right follower front target will change across formations,
+                    # so force it to relock its front visual reference.
+                    formation_targets["Right"]["front_visual_initialized"] = False
+                    formation_targets["Right"]["desired_front_offset"] = 0.0
+                    formation_targets["Right"]["desired_front_area"] = 0.0
+                    formation_targets["Right"]["desired_front_target_kind"] = None
+
+                    if new_mode == "line":
+                        runtime_settings["right_line_transition_until"] = time.time() + float(
+                            runtime_settings.get("right_line_transition_sec", 2.0)
+                        )
+                        runtime_settings["right_v_recovery_until"] = 0.0
+
+                    elif new_mode == "v":
+                        runtime_settings["right_v_recovery_until"] = time.time() + float(
+                            runtime_settings.get("right_v_recovery_sec", 2.5)
+                        )
+                        runtime_settings["right_line_transition_until"] = 0.0
+
+                    else:
+                        runtime_settings["right_line_transition_until"] = 0.0
+                        runtime_settings["right_v_recovery_until"] = 0.0
+
+                    print(f"[FormationMode] Switched {prev_mode} -> {new_mode}, reset Right front reference")
+
+            except BlockingIOError:
+                pass
+            except Exception as e:
+                print(f"[FormationMode] Receive error: {e}")
 
             # Arm leader command retries the first time startup sync signals that
             # visual lock is ready.  This ensures the leader is stationary at spawn

@@ -17,6 +17,15 @@ runtime_settings = {
     "startup_sync_started_at": None,
     "startup_sync_status": "disabled" if not SYNC_FOLLOWER_STARTUP_ENABLE else "waiting",
     "startup_sync_wait_reason": "",
+    "formation_mode": "v",
+    # V --> Line Right Side Acceleration parameters
+    "right_line_transition_until": 0.0,
+    "right_line_throttle_scale": 0.60,
+    "right_line_transition_sec": 2.0,
+    # V --> Line Right Side Deceleration parameters
+    "right_v_recovery_until": 0.0,
+    "right_v_recovery_boost": 0.25,
+    "right_v_recovery_sec": 4.0,
 }
 
 
